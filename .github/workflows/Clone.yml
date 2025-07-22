@@ -1,4 +1,4 @@
-name: Clone & Push Custom Repo/Branch
+name: Clone & Push to Empty Repo
 
 on:
   workflow_dispatch:
@@ -10,39 +10,38 @@ on:
         description: 'Source branch to clone (e.g. v24.10.2)'
         required: true
       target_repo:
-        description: 'Target repository to push (e.g. https://github.com/sipitongyo/imowrt.git)'
+        description: 'Target repository to push to (e.g. https://github.com/youruser/yourrepo.git)'
         required: true
       target_branch:
-        description: 'Target branch to push (e.g. v24.10.2)'
+        description: 'Target branch to push to (e.g. main)'
         required: true
 
 jobs:
-  clone-and-push:
+  push-to-empty-repo:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Clone source repo
+    - name: Clone source repo (full history)
       run: |
-        echo "Cloning from ${{ github.event.inputs.source_repo }} (branch: ${{ github.event.inputs.source_branch }})"
-        git clone --depth=1 --branch "${{ github.event.inputs.source_branch }}" "${{ github.event.inputs.source_repo }}" source-repo
+        git clone --branch "${{ github.event.inputs.source_branch }}" "${{ github.event.inputs.source_repo }}" source-repo
 
     - name: Set up Git identity
       run: |
         git config --global user.name "GitHub Action"
         git config --global user.email "action@github.com"
 
-    - name: Push to target repo
+    - name: Force push to target empty repo
       env:
         TOKEN: ${{ secrets.PUSH_TOKEN }}
       run: |
         cd source-repo
 
-        echo "Cleaning target repo URL..."
-        TARGET_URL="${{ github.event.inputs.target_repo }}"
-        CLEAN_URL="${TARGET_URL#https://}"
+        # Replace https://... with x-access-token
+        CLEAN_URL="${{ github.event.inputs.target_repo#https:// }}"
+        echo "Target remote: https://x-access-token@${CLEAN_URL}"
 
-        echo "Setting remote to https://x-access-token@${CLEAN_URL}"
-        git remote set-url origin "https://x-access-token:${TOKEN}@${CLEAN_URL}"
+        # Set new remote pointing to target repo
+        git remote add new-origin "https://x-access-token:${TOKEN}@${CLEAN_URL}"
 
-        echo "Pushing to branch ${{ github.event.inputs.target_branch }}"
-        git push --force origin HEAD:${{ github.event.inputs.target_branch }}
+        # Push full history forcibly to target branch
+        git push --force new-origin HEAD:${{ github.event.inputs.target_branch }}
