@@ -1,0 +1,53 @@
+name: Smart Sync Source ➜ Target
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: 'Source repo (e.g. https://github.com/qosmio/openwrt-ipq.git)'
+        required: true
+      source_branch:
+        description: 'Source branch (e.g. 24.10-nss)'
+        required: true
+      target_repo:
+        description: 'Target repo (e.g. https://github.com/sipitongyo/imowrt.git)'
+        required: true
+      target_branch:
+        description: 'Target branch (e.g. v24.10.2)'
+        required: true
+
+jobs:
+  smart-sync:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Clone source repo
+      run: |
+        git clone --branch "${{ github.event.inputs.source_branch }}" "${{ github.event.inputs.source_repo }}" source-repo
+
+    - name: Clone target repo
+      env:
+        TOKEN: ${{ secrets.PUSH_TOKEN }}
+      run: |
+        AUTH_URL="https://x-access-token:${TOKEN}@github.com/$(echo "${{ github.event.inputs.target_repo }}" | sed 's|https://github.com/||')"
+        git clone --branch "${{ github.event.inputs.target_branch }}" "$AUTH_URL" target-repo
+
+    - name: Sync only changes (added/modified/deleted)
+      run: |
+        rsync -av --delete --exclude=".git" source-repo/ target-repo/
+
+    - name: Commit & push if there are changes
+      env:
+        TOKEN: ${{ secrets.PUSH_TOKEN }}
+      run: |
+        cd target-repo
+        git config user.name "GitHub Action"
+        git config user.email "action@github.com"
+
+        if [ -n "$(git status --porcelain)" ]; then
+          git add .
+          git commit -m "Sync changes from source repo"
+          git push origin "${{ github.event.inputs.target_branch }}"
+        else
+          echo "No changes to commit"
+        fi
