@@ -33,15 +33,16 @@ jobs:
     - name: Force push to target empty repo
       env:
         TOKEN: ${{ secrets.PUSH_TOKEN }}
+        TARGET_REPO: ${{ github.event.inputs.target_repo }}
+        TARGET_BRANCH: ${{ github.event.inputs.target_branch }}
       run: |
         cd source-repo
 
-        # Replace https://... with x-access-token
-        CLEAN_URL="${{ github.event.inputs.target_repo#https:// }}"
-        echo "Target remote: https://x-access-token@${CLEAN_URL}"
+        # Convert target_repo to authenticated URL
+        CLEAN_URL="${TARGET_REPO/https:\/\/github.com\//}"
+        AUTH_URL="https://x-access-token:${TOKEN}@github.com/${CLEAN_URL}"
 
-        # Set new remote pointing to target repo
-        git remote add new-origin "https://x-access-token:${TOKEN}@${CLEAN_URL}"
+        echo "Pushing to: ${AUTH_URL} on branch ${TARGET_BRANCH}"
 
-        # Push full history forcibly to target branch
-        git push --force new-origin HEAD:${{ github.event.inputs.target_branch }}
+        git remote add target "${AUTH_URL}"
+        git push --force target HEAD:${TARGET_BRANCH}
