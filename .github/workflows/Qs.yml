@@ -1,0 +1,84 @@
+name: Filtered Sync by Author (qosmio only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: 'Source repo (e.g. https://github.com/qosmio/openwrt-ipq.git)'
+        default: 'https://github.com/qosmio/openwrt-ipq.git'
+        required: true
+      source_branch:
+        description: 'Source branch (e.g. 24.10-nss)'
+        default: '24.10-nss'
+        required: true
+      target_repo:
+        description: 'Target repo (e.g. https://github.com/sipitongyo/imowrt.git)'
+        default: 'https://github.com/sipitongyo/imowrt.git'
+        required: true
+      target_branch:
+        description: 'Target branch (e.g. v24.10.2)'
+        default: 'v24.10.2'
+        required: true
+
+jobs:
+  sync-if-author-matches:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout source repo
+      run: |
+        git clone "${{ github.event.inputs.source_repo }}" source-repo
+        cd source-repo
+        git checkout "${{ github.event.inputs.source_branch }}"
+
+    - name: Checkout target repo
+      env:
+        TOKEN: ${{ secrets.PUSH_TOKEN }}
+      run: |
+        AUTH_URL="https://x-access-token:${TOKEN}@github.com/$(echo "${{ github.event.inputs.target_repo }}" | sed 's|https://github.com/||')"
+        git clone "$AUTH_URL" target-repo
+        cd target-repo
+        git checkout "${{ github.event.inputs.target_branch }}"
+
+    - name: Detect unauthorized commits
+      id: check
+      run: |
+        cd source-repo
+        # Get last common commit (merge base)
+        BASE=$(git rev-parse HEAD)
+        echo "BASE_COMMIT=$BASE" >> $GITHUB_ENV
+
+        # Get all authors since base (or N commits)
+        AUTHORS=$(git log --pretty=format:'%an' -n 20)
+        echo "Authors in last 20 commits:"
+        echo "$AUTHORS"
+
+        # Check if any author is NOT qosmio
+        UNAUTHORIZED=$(echo "$AUTHORS" | grep -vi '^qosmio$' || true)
+        if [ -n "$UNAUTHORIZED" ]; then
+          echo "❌ Skipping sync: found unauthorized author(s)"
+          echo "$UNAUTHORIZED"
+          echo "continue=no" >> $GITHUB_OUTPUT
+        else
+          echo "✅ All commits are from qosmio"
+          echo "continue=yes" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Sync and Push (only if author = qosmio)
+      if: steps.check.outputs.continue == 'yes'
+      env:
+        TOKEN: ${{ secrets.PUSH_TOKEN }}
+      run: |
+        rsync -av --delete --exclude=".git" source-repo/ target-repo/
+
+        cd target-repo
+        git config user.name "GitHub Action"
+        git config user.email "action@github.com"
+
+        if [ -n "$(git status --porcelain)" ]; then
+          git add .
+          git commit -m "Sync from qosmio (auto-approved by GitHub Action)"
+          git push origin "${{ github.event.inputs.target_branch }}"
+        else
+          echo "No changes to push."
+        fi
