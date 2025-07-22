@@ -23,6 +23,7 @@ jobs:
     steps:
     - name: Clone source repo
       run: |
+        echo "Cloning from ${{ github.event.inputs.source_repo }} (branch: ${{ github.event.inputs.source_branch }})"
         git clone --depth=1 --branch "${{ github.event.inputs.source_branch }}" "${{ github.event.inputs.source_repo }}" source-repo
 
     - name: Set up Git identity
@@ -35,5 +36,13 @@ jobs:
         TOKEN: ${{ secrets.PUSH_TOKEN }}
       run: |
         cd source-repo
-        git remote set-url origin https://x-access-token:${TOKEN}@${{ github.event.inputs.target_repo }}
+
+        echo "Cleaning target repo URL..."
+        TARGET_URL="${{ github.event.inputs.target_repo }}"
+        CLEAN_URL="${TARGET_URL#https://}"
+
+        echo "Setting remote to https://x-access-token@${CLEAN_URL}"
+        git remote set-url origin "https://x-access-token:${TOKEN}@${CLEAN_URL}"
+
+        echo "Pushing to branch ${{ github.event.inputs.target_branch }}"
         git push --force origin HEAD:${{ github.event.inputs.target_branch }}
