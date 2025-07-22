@@ -1,37 +1,33 @@
-name: Filtered Sync by Author (qosmio only)
+name: Full Sync by Author (qosmio only)
 
 on:
   workflow_dispatch:
     inputs:
       source_repo:
         description: 'Source repo (e.g. https://github.com/qosmio/openwrt-ipq.git)'
-        default: 'https://github.com/qosmio/openwrt-ipq.git'
         required: true
       source_branch:
         description: 'Source branch (e.g. 24.10-nss)'
-        default: '24.10-nss'
         required: true
       target_repo:
         description: 'Target repo (e.g. https://github.com/sipitongyo/imowrt.git)'
-        default: 'https://github.com/sipitongyo/imowrt.git'
         required: true
       target_branch:
         description: 'Target branch (e.g. v24.10.2)'
-        default: 'v24.10.2'
         required: true
 
 jobs:
-  sync-if-author-matches:
+  sync-if-author-is-qosmio:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout source repo
+    - name: Clone source repo
       run: |
         git clone "${{ github.event.inputs.source_repo }}" source-repo
         cd source-repo
         git checkout "${{ github.event.inputs.source_branch }}"
 
-    - name: Checkout target repo
+    - name: Clone target repo
       env:
         TOKEN: ${{ secrets.PUSH_TOKEN }}
       run: |
@@ -40,31 +36,28 @@ jobs:
         cd target-repo
         git checkout "${{ github.event.inputs.target_branch }}"
 
-    - name: Detect unauthorized commits
+    - name: Check all commits author is qosmio
       id: check
       run: |
         cd source-repo
-        # Get last common commit (merge base)
-        BASE=$(git rev-parse HEAD)
-        echo "BASE_COMMIT=$BASE" >> $GITHUB_ENV
 
-        # Get all authors since base (or N commits)
-        AUTHORS=$(git log --pretty=format:'%an' -n 20)
-        echo "Authors in last 20 commits:"
+        echo "🔍 Checking ALL commit authors on source branch..."
+        AUTHORS=$(git log --pretty=format:'%an' | sort | uniq)
+        echo "Authors:"
         echo "$AUTHORS"
 
-        # Check if any author is NOT qosmio
-        UNAUTHORIZED=$(echo "$AUTHORS" | grep -vi '^qosmio$' || true)
-        if [ -n "$UNAUTHORIZED" ]; then
-          echo "❌ Skipping sync: found unauthorized author(s)"
-          echo "$UNAUTHORIZED"
+        BAD_AUTHORS=$(echo "$AUTHORS" | grep -vi '^qosmio$' || true)
+
+        if [ -n "$BAD_AUTHORS" ]; then
+          echo "❌ Found commits by authors other than qosmio:"
+          echo "$BAD_AUTHORS"
           echo "continue=no" >> $GITHUB_OUTPUT
         else
-          echo "✅ All commits are from qosmio"
+          echo "✅ All commits made by qosmio"
           echo "continue=yes" >> $GITHUB_OUTPUT
         fi
 
-    - name: Sync and Push (only if author = qosmio)
+    - name: Sync & Push only if qosmio is author
       if: steps.check.outputs.continue == 'yes'
       env:
         TOKEN: ${{ secrets.PUSH_TOKEN }}
@@ -77,8 +70,8 @@ jobs:
 
         if [ -n "$(git status --porcelain)" ]; then
           git add .
-          git commit -m "Sync from qosmio (auto-approved by GitHub Action)"
+          git commit -m "Sync from qosmio - filtered by author"
           git push origin "${{ github.event.inputs.target_branch }}"
         else
-          echo "No changes to push."
+          echo "✅ No changes detected — nothing to commit"
         fi
