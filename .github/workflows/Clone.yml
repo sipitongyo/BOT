@@ -1,0 +1,39 @@
+name: Clone & Push Custom Repo/Branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: 'Source repository (e.g. https://github.com/immortalwrt/immortalwrt.git)'
+        required: true
+      source_branch:
+        description: 'Source branch to clone (e.g. v24.10.2)'
+        required: true
+      target_repo:
+        description: 'Target repository to push (e.g. https://github.com/sipitongyo/imowrt.git)'
+        required: true
+      target_branch:
+        description: 'Target branch to push (e.g. v24.10.2)'
+        required: true
+
+jobs:
+  clone-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Clone source repo
+      run: |
+        git clone --depth=1 --branch "${{ github.event.inputs.source_branch }}" "${{ github.event.inputs.source_repo }}" source-repo
+
+    - name: Set up Git identity
+      run: |
+        git config --global user.name "GitHub Action"
+        git config --global user.email "action@github.com"
+
+    - name: Push to target repo
+      env:
+        TOKEN: ${{ secrets.PUSH_TOKEN }}
+      run: |
+        cd source-repo
+        git remote set-url origin https://x-access-token:${TOKEN}@${{ github.event.inputs.target_repo }}
+        git push --force origin HEAD:${{ github.event.inputs.target_branch }}
